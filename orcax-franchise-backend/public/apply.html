@@ -2,53 +2,43 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>가맹점 신청서</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>가맹점 신청</title>
 </head>
-<body class="bg-gray-50 py-10 px-4">
-  <div class="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl">
-    <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">가맹점 신청서</h1>
-    <form action="/api/apply" method="POST" enctype="multipart/form-data" class="space-y-4">
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">상호</label>
-        <input type="text" name="name" required class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-      </div>
+<body>
+  <h1>가맹점 신청서</h1>
+  <form id="apply-form">
+    <label>이름: <input type="text" id="name" required></label><br/>
+    <label>전화번호: <input type="text" id="phone" required></label><br/>
+    <label>메시지: <textarea id="message" required></textarea></label><br/>
+    <button type="submit">신청</button>
+  </form>
 
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">연락처</label>
-        <input type="text" name="phone" required class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-      </div>
+  <script>
+    document.querySelector('#apply-form').addEventListener('submit', function (e) {
+      e.preventDefault();
 
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">사업자등록번호</label>
-        <input type="text" name="bizNo" required class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-      </div>
+      const data = {
+        name: document.querySelector('#name').value,
+        phone: document.querySelector('#phone').value,
+        message: document.querySelector('#message').value
+      };
 
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">지역</label>
-        <input type="text" name="region" required class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-      </div>
-
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">사업장 주소</label>
-        <input type="text" name="address" required class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-      </div>
-
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">업종 및 종목</label>
-        <input type="text" name="category" required class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-      </div>
-
-      <div>
-        <label class="block text-sm font-semibold text-gray-700">사업자등록증 파일 업로드</label>
-        <input type="file" name="bizFile" accept=".pdf,image/*" required class="mt-1 w-full" />
-      </div>
-
-      <button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition">
-        신청하기
-      </button>
-    </form>
-  </div>
+      fetch("https://orcax-backend.onrender.com/apply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+      })
+        .then(res => res.json())
+        .then(res => {
+          alert("서버 응답: " + res.message);
+        })
+        .catch(err => {
+          alert("에러 발생: " + err.message);
+        });
+    });
+  </script>
 </body>
 </html>
