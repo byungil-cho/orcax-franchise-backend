@@ -12,10 +12,9 @@ app.get('/', (req, res) => {
 
 app.post('/apply', (req, res) => {
   console.log("📦 신청서 도착:", req.body);
-  res.json({ message: "신청 완료! 고마워 범고래야!" });
+  res.json({ message: "신청 완료! 범고래 감자 접수함!" });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 서버가 포트 ${PORT}에서 실행 중`);
+  console.log(`🚀 서버 실행 중 at 포트 ${PORT}`);
 });
-
