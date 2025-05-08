@@ -1,55 +1,21 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>OrcaX 가맹점 신청</title>
-</head>
-<body>
-  <h1>가맹점 신청서</h1>
-  <form id="applyForm">
-    <label for="name">이름:</label>
-    <input type="text" id="name" name="name" required /><br/><br/>
+const express = require('express');
+const cors = require('cors');
+const app = express();
+const PORT = process.env.PORT || 3030;
 
-    <label for="phone">전화번호:</label>
-    <input type="text" id="phone" name="phone" required /><br/><br/>
+app.use(cors());
+app.use(express.json());
 
-    <label for="message">메시지:</label>
-    <textarea id="message" name="message" required></textarea><br/><br/>
+app.get('/', (req, res) => {
+  res.send('OrcaX Backend is alive!');
+});
 
-    <button type="submit">신청하기</button>
-  </form>
+app.post('/apply', (req, res) => {
+  console.log("📦 신청서 도착:", req.body);
+  res.json({ message: "신청 완료! 고마워 범고래야!" });
+});
 
-  <div id="result"></div>
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 서버가 포트 ${PORT}에서 실행 중`);
+});
 
-  <script>
-    const form = document.getElementById("applyForm");
-    const result = document.getElementById("result");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      const data = {
-        name: form.name.value,
-        phone: form.phone.value,
-        message: form.message.value
-      };
-
-      try {
-        const res = await fetch("https://orcax-backend.onrender.com/apply", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(data)
-        });
-
-        const resJson = await res.json();
-        result.textContent = resJson.message || "신청 완료되었습니다!";
-      } catch (err) {
-        result.textContent = "신청 중 오류 발생: " + err.message;
-      }
-    });
-  </script>
-</body>
-</html>
