@@ -1,38 +1,30 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OrcaX 가맹점 신청</title>
 </head>
 <body>
   <h1>가맹점 신청서</h1>
+
   <form id="applyForm">
-    <label for="name">이름:</label>
-    <input type="text" id="name" name="name" required /><br/><br/>
-
-    <label for="phone">전화번호:</label>
-    <input type="text" id="phone" name="phone" required /><br/><br/>
-
-    <label for="message">메시지:</label>
-    <textarea id="message" name="message" required></textarea><br/><br/>
-
-    <button type="submit">신청하기</button>
+    <label>이름: <input type="text" id="name" required /></label><br/><br/>
+    <label>전화번호: <input type="text" id="phone" required /></label><br/><br/>
+    <label>메시지: <textarea id="message" required></textarea></label><br/><br/>
+    <button type="submit">신청</button>
   </form>
 
-  <div id="result"></div>
+  <div id="result" style="margin-top:20px; font-weight:bold;"></div>
 
   <script>
-    const form = document.getElementById("applyForm");
-    const result = document.getElementById("result");
-
-    form.addEventListener("submit", async (e) => {
+    document.getElementById("applyForm").addEventListener("submit", async function(e) {
       e.preventDefault();
 
       const data = {
-        name: form.name.value,
-        phone: form.phone.value,
-        message: form.message.value
+        name: document.getElementById("name").value,
+        phone: document.getElementById("phone").value,
+        message: document.getElementById("message").value
       };
 
       try {
@@ -44,12 +36,13 @@
           body: JSON.stringify(data)
         });
 
-        const resJson = await res.json();
-        result.textContent = resJson.message || "신청 완료!";
+        const json = await res.json();
+        document.getElementById("result").textContent = "✅ 서버 응답: " + json.message;
       } catch (err) {
-        result.textContent = "신청 중 오류 발생: " + err.message;
+        document.getElementById("result").textContent = "❌ 오류 발생: " + err.message;
       }
     });
   </script>
 </body>
 </html>
+
