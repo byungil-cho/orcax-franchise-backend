@@ -1,20 +1,22 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
-const PORT = process.env.PORT || 3030;
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+require("dotenv").config();
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('OrcaX Backend is alive!');
-});
+// 👉 /apply 라우트 연결
+const applyRoute = require("./경로/apply"); // 실제 경로 맞춰주세요
+app.use(applyRoute);
 
-app.post('/apply', (req, res) => {
-  console.log("📦 신청서 도착:", req.body);
-  res.json({ message: "신청 완료! 범고래 감자 접수함!" });
-});
+// 몽고 연결
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("🟢 MongoDB 연결 성공"))
+  .catch(err => console.error("❌ MongoDB 연결 실패:", err));
 
-app.listen(PORT, '0.0.0.0', () => {
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
   console.log(`🚀 서버 실행 중 at 포트 ${PORT}`);
 });
