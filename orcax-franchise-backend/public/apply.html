@@ -9,9 +9,15 @@
   <h1>가맹점 신청서</h1>
 
   <form id="applyForm">
-    <label>이름: <input type="text" id="name" required /></label><br/><br/>
-    <label>전화번호: <input type="text" id="phone" required /></label><br/><br/>
-    <label>메시지: <textarea id="message" required></textarea></label><br/><br/>
+    <label for="name">이름:</label>
+    <input type="text" id="name" name="name" required><br><br>
+
+    <label for="phone">전화번호:</label>
+    <input type="text" id="phone" name="phone" required><br><br>
+
+    <label for="message">메시지:</label>
+    <textarea id="message" name="message" required></textarea><br><br>
+
     <button type="submit">신청</button>
   </form>
 
@@ -36,8 +42,8 @@
           body: JSON.stringify(data)
         });
 
-        const json = await res.json();
-        document.getElementById("result").textContent = "✅ 서버 응답: " + json.message;
+        const result = await res.json();
+        document.getElementById("result").textContent = "✅ 서버 응답: " + result.message;
       } catch (err) {
         document.getElementById("result").textContent = "❌ 오류 발생: " + err.message;
       }
@@ -45,4 +51,5 @@
   </script>
 </body>
 </html>
+
 
