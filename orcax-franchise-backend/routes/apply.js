@@ -51,9 +51,18 @@ router.post("/apply", upload.single("file"), async (req, res) => {
   console.log("📥 신청 데이터:", data);
   console.log("📎 업로드 파일:", file);
 
+  // 🔍 파일 누락 시 처리
+  if (!file) {
+    console.error("❌ 파일이 업로드되지 않았습니다.");
+    return res.status(400).json({
+      success: false,
+      message: "파일이 업로드되지 않았습니다.",
+    });
+  }
+
   try {
     // 1. DB 저장
-    const newApp = new Application({ ...data, file: file?.filename });
+    const newApp = new Application({ ...data, file: file.filename });
     await newApp.save();
 
     // 2. 이메일 전송
@@ -70,14 +79,12 @@ router.post("/apply", upload.single("file"), async (req, res) => {
         업종: ${data.type}
         비고: ${data.message}
       `,
-      attachments: file
-        ? [
-            {
-              filename: file.originalname,
-              path: path.join(uploadFolder, file.filename),
-            },
-          ]
-        : [],
+      attachments: [
+        {
+          filename: file.originalname,
+          path: path.join(uploadFolder, file.filename),
+        },
+      ],
     };
 
     await transporter.sendMail(mailOptions);
@@ -96,4 +103,5 @@ router.post("/apply", upload.single("file"), async (req, res) => {
 });
 
 module.exports = router;
+
 
