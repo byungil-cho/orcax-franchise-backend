@@ -1,30 +1,85 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const router = express.Router();
+const multer = require("multer");
+const nodemailer = require("nodemailer");
+const mongoose = require("mongoose");
+const path = require("path");
+const fs = require("fs");
 
-// 스키마 정의
-const ApplySchema = new mongoose.Schema({
+// 업로드 폴더 설정
+const uploadFolder = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
+
+// multer 설정
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadFolder),
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + "-" + file.originalname;
+    cb(null, uniqueName);
+  },
+});
+const upload = multer({ storage });
+
+// Mongo 스키마
+const ApplicationSchema = new mongoose.Schema({
   name: String,
   phone: String,
+  biznum: String,
+  region: String,
+  address: String,
+  type: String,
   message: String,
-  createdAt: { type: Date, default: Date.now }
+  file: String,
+  submittedAt: { type: Date, default: Date.now },
+});
+const Application = mongoose.model("Application", ApplicationSchema);
+
+// 이메일 설정
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
 });
 
-// 모델 생성
-const Apply = mongoose.model("Apply", ApplySchema);
+// 신청서 API (파일 포함)
+router.post("/apply", upload.single("file"), async (req, res) => {
+  const data = req.body;
+  const file = req.file;
 
-// POST /apply
-router.post("/apply", async (req, res) => {
   try {
-    const { name, phone, message } = req.body;
+    // 1. DB 저장
+    const newApp = new Application({ ...data, file: file.filename });
+    await newApp.save();
 
-    const newApply = new Apply({ name, phone, message });
-    await newApply.save();
+    // 2. 이메일 전송
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: [process.env.EMAIL_USER, process.env.EMAIL_RECEIVER],
+      subject: "📬 신규 가맹점 신청서 도착",
+      text: `
+        상호: ${data.name}
+        연락처: ${data.phone}
+        사업자등록번호: ${data.biznum}
+        지역: ${data.region}
+        주소: ${data.address}
+        업종: ${data.type}
+        비고: ${data.message}
+      `,
+      attachments: [
+        {
+          filename: file.originalname,
+          path: path.join(uploadFolder, file.filename),
+        },
+      ],
+    };
 
-    res.json({ message: "✅ 신청이 성공적으로 저장되었습니다." });
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ success: true, message: "신청서 접수 및 파일 전송 완료" });
   } catch (err) {
-    console.error("❌ 저장 실패:", err);
-    res.status(500).json({ message: "서버 오류 발생" });
+    console.error("❌ 오류:", err);
+    res.status(500).json({ success: false, message: "신청 처리 중 오류 발생" });
   }
 });
 
