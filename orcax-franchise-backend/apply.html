@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>가맹점 신청서</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 30px auto; }
@@ -31,7 +31,7 @@
       const formData = Object.fromEntries(new FormData(this).entries());
 
       try {
-        const res = await fetch("http://localhost:3030/apply", {
+        const res = await fetch("https://orcax-franchise-backend.onrender.com/apply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(formData),
@@ -39,7 +39,7 @@
         const result = await res.json();
         document.getElementById("result").textContent = "✅ " + result.message;
       } catch (err) {
-        document.getElementById("result").textContent = "❌ 오류 발생: " + err.message;
+        document.getElementById("result").textContent = "❌ 오류: " + err.message;
       }
     });
   </script>
