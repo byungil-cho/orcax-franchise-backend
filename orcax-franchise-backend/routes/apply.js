@@ -6,7 +6,7 @@ const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 
-// 📁 업로드 폴더 자동 생성
+// 📁 업로드 폴더 없으면 생성
 const uploadFolder = path.join(__dirname, "..", "uploads");
 if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
 
@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 🧾 Mongo 스키마
+// 🧾 MongoDB 스키마 정의
 const ApplicationSchema = new mongoose.Schema({
   name: String,
   phone: String,
@@ -43,7 +43,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// 📨 신청서 처리
+// 📨 신청 처리 라우터
 router.post("/apply", upload.single("file"), async (req, res) => {
   const data = req.body;
   const file = req.file;
@@ -51,7 +51,7 @@ router.post("/apply", upload.single("file"), async (req, res) => {
   console.log("📥 신청 데이터:", data);
   console.log("📎 업로드 파일:", file);
 
-  // 🔍 파일 누락 시 처리
+  // ⚠️ 파일 없을 경우 에러 응답
   if (!file) {
     console.error("❌ 파일이 업로드되지 않았습니다.");
     return res.status(400).json({
@@ -61,11 +61,11 @@ router.post("/apply", upload.single("file"), async (req, res) => {
   }
 
   try {
-    // 1. DB 저장
+    // 1. DB에 저장
     const newApp = new Application({ ...data, file: file.filename });
     await newApp.save();
 
-    // 2. 이메일 전송
+    // 2. 이메일 보내기
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: [process.env.EMAIL_USER, process.env.EMAIL_RECEIVER],
@@ -103,5 +103,6 @@ router.post("/apply", upload.single("file"), async (req, res) => {
 });
 
 module.exports = router;
+
 
 
