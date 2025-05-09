@@ -48,9 +48,12 @@ router.post("/apply", upload.single("file"), async (req, res) => {
   const data = req.body;
   const file = req.file;
 
+  console.log("📥 신청 데이터:", data);
+  console.log("📎 업로드 파일:", file);
+
   try {
     // 1. DB 저장
-    const newApp = new Application({ ...data, file: file.filename });
+    const newApp = new Application({ ...data, file: file?.filename });
     await newApp.save();
 
     // 2. 이메일 전송
@@ -78,7 +81,11 @@ router.post("/apply", upload.single("file"), async (req, res) => {
     };
 
     await transporter.sendMail(mailOptions);
-    res.status(200).json({ success: true, message: "신청 완료! 범고래 감사 접수함!" });
+
+    res.status(200).json({
+      success: true,
+      message: "신청 완료! 범고래 감사 접수함!",
+    });
   } catch (err) {
     console.error("❌ 서버 오류:", err.message);
     res.status(500).json({
