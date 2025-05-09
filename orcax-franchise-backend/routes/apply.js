@@ -1,108 +1,64 @@
-const express = require("express");
+const express = require('express');
+const multer = require('multer');
+const Application = require('../models/application');
+const nodemailer = require('nodemailer');
+require('dotenv').config();
+
 const router = express.Router();
-const multer = require("multer");
-const nodemailer = require("nodemailer");
-const mongoose = require("mongoose");
-const path = require("path");
-const fs = require("fs");
+const upload = multer();
 
-// 📁 업로드 폴더 없으면 생성
-const uploadFolder = path.join(__dirname, "..", "uploads");
-if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
-
-// 📸 multer 설정
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadFolder),
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + file.originalname;
-    cb(null, uniqueName);
-  },
-});
-const upload = multer({ storage });
-
-// 🧾 MongoDB 스키마 정의
-const ApplicationSchema = new mongoose.Schema({
-  name: String,
-  phone: String,
-  biznum: String,
-  region: String,
-  address: String,
-  type: String,
-  message: String,
-  file: String,
-  submittedAt: { type: Date, default: Date.now },
-});
-const Application = mongoose.model("Application", ApplicationSchema);
-
-// 📧 이메일 설정
-const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-// 📨 신청 처리 라우터
-router.post("/apply", upload.single("file"), async (req, res) => {
-  const data = req.body;
-  const file = req.file;
-
-  console.log("📥 신청 데이터:", data);
-  console.log("📎 업로드 파일:", file);
-
-  // ⚠️ 파일 없을 경우 에러 응답
-  if (!file) {
-    console.error("❌ 파일이 업로드되지 않았습니다.");
-    return res.status(400).json({
-      success: false,
-      message: "파일이 업로드되지 않았습니다.",
-    });
-  }
-
+router.post('/apply', upload.single('file'), async (req, res) => {
   try {
-    // 1. DB에 저장
-    const newApp = new Application({ ...data, file: file.filename });
-    await newApp.save();
+    const newApp = new Application({
+      ...req.body,
+      file: {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        buffer: req.file.buffer,
+        size: req.file.size
+      }
+    });
 
-    // 2. 이메일 보내기
+    await newApp.save();
+    console.log("✅ MongoDB 저장 완료!");
+
+    // ✅ 이메일 발송 준비
+    const transporter = nodemailer.createTransport({
+      service: process.env.EMAIL_SERVICE,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: [process.env.EMAIL_USER, process.env.EMAIL_RECEIVER],
-      subject: "📬 신규 가맹점 신청서 도착",
-      text: `
-        상호: ${data.name}
-        연락처: ${data.phone}
-        사업자등록번호: ${data.biznum}
-        지역: ${data.region}
-        주소: ${data.address}
-        업종: ${data.type}
-        비고: ${data.message}
-      `,
-      attachments: [
-        {
-          filename: file.originalname,
-          path: path.join(uploadFolder, file.filename),
-        },
-      ],
+      from: `"OrcaX 접수알림" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_RECEIVER,
+      subject: `[OrcaX 신청] ${req.body.name}님 가맹점 신청이 도착했습니다!`,
+      html: `
+        <h3>📄 OrcaX 가맹 신청서 접수</h3>
+        <p><strong>상호명:</strong> ${req.body.name}</p>
+        <p><strong>연락처:</strong> ${req.body.phone}</p>
+        <p><strong>업종:</strong> ${req.body.type}</p>
+        <p><strong>주소:</strong> ${req.body.address}</p>
+        <p><strong>지역:</strong> ${req.body.region}</p>
+        <p><strong>비고:</strong> ${req.body.message || "없음"}</p>
+        <p><strong>신청시간:</strong> ${new Date().toLocaleString()}</p>
+      `
     };
 
     await transporter.sendMail(mailOptions);
+    console.log("📧 메일 전송 성공 → " + process.env.EMAIL_RECEIVER);
 
-    res.status(200).json({
-      success: true,
-      message: "신청 완료! 범고래 감사 접수함!",
-    });
+    res.json({ message: "신청 완료 및 관리자 알림 전송 완료!" });
   } catch (err) {
-    console.error("❌ 서버 오류:", err.message);
-    res.status(500).json({
-      success: false,
-      message: "서버 오류: " + err.message,
-    });
+    console.error("❌ 오류 발생:", err.message);
+    res.status(500).json({ message: "서버 오류 발생!" });
   }
 });
 
 module.exports = router;
+
 
 
 
