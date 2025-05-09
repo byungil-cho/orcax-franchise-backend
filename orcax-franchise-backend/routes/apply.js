@@ -6,11 +6,11 @@ const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 
-// 업로드 폴더 설정
+// 📁 업로드 폴더 자동 생성
 const uploadFolder = path.join(__dirname, "..", "uploads");
 if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
 
-// multer 설정
+// 📸 multer 설정
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadFolder),
   filename: (req, file, cb) => {
@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Mongo 스키마
+// 🧾 Mongo 스키마
 const ApplicationSchema = new mongoose.Schema({
   name: String,
   phone: String,
@@ -34,7 +34,7 @@ const ApplicationSchema = new mongoose.Schema({
 });
 const Application = mongoose.model("Application", ApplicationSchema);
 
-// 이메일 설정
+// 📧 이메일 설정
 const transporter = nodemailer.createTransport({
   service: process.env.EMAIL_SERVICE || "gmail",
   auth: {
@@ -43,7 +43,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// 신청서 API (파일 포함)
+// 📨 신청서 처리
 router.post("/apply", upload.single("file"), async (req, res) => {
   const data = req.body;
   const file = req.file;
@@ -67,19 +67,24 @@ router.post("/apply", upload.single("file"), async (req, res) => {
         업종: ${data.type}
         비고: ${data.message}
       `,
-      attachments: [
-        {
-          filename: file.originalname,
-          path: path.join(uploadFolder, file.filename),
-        },
-      ],
+      attachments: file
+        ? [
+            {
+              filename: file.originalname,
+              path: path.join(uploadFolder, file.filename),
+            },
+          ]
+        : [],
     };
 
     await transporter.sendMail(mailOptions);
-    res.status(200).json({ success: true, message: "신청서 접수 및 파일 전송 완료" });
+    res.status(200).json({ success: true, message: "신청 완료! 범고래 감사 접수함!" });
   } catch (err) {
-    console.error("❌ 오류:", err);
-    res.status(500).json({ success: false, message: "신청 처리 중 오류 발생" });
+    console.error("❌ 서버 오류:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "서버 오류: " + err.message,
+    });
   }
 });
 
