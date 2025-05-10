@@ -1,27 +1,14 @@
 const mongoose = require('mongoose');
 
 const applicationSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-  },
-  phone: {
-    type: String,
-    required: true,
-  },
-  businessName: {
-    type: String,
-  },
-  address: {
-    type: String,
-  },
-  message: {
-    type: String,
-  },
-  submittedAt: {
-    type: Date,
-    default: Date.now,
-  },
+  name: String,
+  phone: String,
+  biznum: String,
+  region: String,
+  address: String,
+  type: String,
+  message: String,
+  createdAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('Application', applicationSchema);
