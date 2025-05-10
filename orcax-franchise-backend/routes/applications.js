@@ -1,10 +1,9 @@
-// routes/applications.js
 const express = require("express");
-const router = express.Router();
 const multer = require("multer");
 const path = require("path");
+const router = express.Router();
 
-// 파일 저장 설정
+// 파일 업로드 저장 경로 설정
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
@@ -15,15 +14,18 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// POST /api/apply
 router.post("/", upload.single("file"), (req, res) => {
   const { name, phone, corpnum, region, address, type, note } = req.body;
   const file = req.file;
 
-  console.log("📦 신청 접수됨:", { name, phone, corpnum, region, address, type, note, file });
+  console.log("📩 가맹점 신청 도착:", {
+    name, phone, corpnum, region, address, type, note,
+    file: file?.filename
+  });
 
-  // 여기서 DB 저장 로직이 가능
-  res.status(200).json({ message: "신청 성공" });
+  // 여기에서 DB 저장도 가능
+  res.status(200).json({ message: "가맹점 신청 접수 완료" });
 });
 
 module.exports = router;
+
