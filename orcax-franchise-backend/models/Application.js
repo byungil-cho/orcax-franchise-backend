@@ -8,8 +8,8 @@ const applicationSchema = new mongoose.Schema({
   address: String,
   type: String,
   message: String,
-  createdAt: { type: Date, default: Date.now },
+  uploadedFileName: String,
+  createdAt: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('Application', applicationSchema);
-
