@@ -1,31 +1,32 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
+const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3030;
 
-app.use(cors());
-
-// mongoose 연결
+// Mongo 연결
 mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('✅ MongoDB 연결 성공'))
-  .catch(err => console.error('❌ MongoDB 연결 실패:', err.message));
+  useNewUrlParser: true, useUnifiedTopology: true
+}).then(() => console.log('✅ Mongo 연결')).catch(console.error);
 
-// 라우터 연결
-const applicationsRouter = require('./routes/applications');
-app.use('/api/applications', applicationsRouter);
+const Application = require('./models/Application');
+const upload = multer({ storage: multer.memoryStorage() });
 
-// 기본 라우트
-app.get('/', (req, res) => {
-  res.send('OrcaX 백엔드 서버 실행 중');
-});
+app.use(cors());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// 서버 시작
-app.listen(PORT, () => {
-  console.log(`🚀 서버 실행 중: http://localhost:${PORT}`);
+app.post('/api/applications', upload.single('file'), async (req, res) => {
+  try {
+    const newApp = new Application({ ...req.body, uploadedFileName: req.file?.originalname });
+    await newApp.save();
+    res.status(201).json({ message: '저장 완료' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '저장 실패' });
+  }
 });
 
