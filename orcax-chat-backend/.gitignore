@@ -1,0 +1,16 @@
+# Node modules
+node_modules/
+
+# 환경설정
+.env
+
+# macOS 쓰레기
+.DS_Store
+
+# 로그
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 편집기 임시파일
+*.swp
