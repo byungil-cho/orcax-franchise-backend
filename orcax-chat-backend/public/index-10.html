@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🐋 OrcaX 실시간 채팅</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #f2fcfe, #e0f1ff);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .chat-container {
+      background-color: #fff;
+      padding: 2rem;
+      border-radius: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      max-width: 600px;
+      width: 90%;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 1.5rem;
+    }
+    input, textarea, select, button {
+      width: 100%;
+      padding: 12px;
+      margin: 0.5rem 0;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+    textarea { resize: none; height: 80px; }
+    button {
+      background: linear-gradient(90deg, #3498db, #2ecc71);
+      color: white; font-weight: bold;
+      cursor: pointer; transition: opacity 0.2s ease;
+    }
+    button:hover { opacity: 0.9; }
+    #chat-log {
+      margin-top: 1rem;
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 1rem;
+      background: #f9f9f9;
+    }
+    .message {
+      margin-bottom: 10px;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <h1>🐋 OrcaX 실시간 채팅</h1>
+    <input type="text" id="sender" placeholder="닉네임을 입력하세요" />
+    <textarea id="message" placeholder="메시지를 입력하세요"></textarea>
+    <select id="color">
+      <option value="#333">검정</option>
+      <option value="#2ecc71">녹색</option>
+      <option value="#3498db">파랑</option>
+      <option value="#e74c3c">빨강</option>
+      <option value="#f1c40f">노랑</option>
+    </select>
+    <button onclick="sendMessage()">전송하기</button>
+    <div id="chat-log"></div>
+  </div>
+
+  <script>
+    const apiUrl = "https://climbing-wholly-grouper.ngrok-free.app/api/messages";
+
+    function sendMessage() {
+      const sender = document.getElementById("sender").value.trim();
+      const message = document.getElementById("message").value.trim();
+      const color = document.getElementById("color").value;
+
+      if (!sender || !message) {
+        alert("닉네임과 메시지를 모두 입력해주세요!");
+        return;
+      }
+
+      fetch(apiUrl, {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender, message, color })
+      })
+      .then(res => res.json())
+      .then(() => {
+        document.getElementById("message").value = '';
+        loadMessages();
+      })
+      .catch(err => {
+        alert("⚠️ 메시지 전송 실패!");
+        console.error("전송 에러:", err);
+      });
+    }
+
+    function loadMessages() {
+      fetch(apiUrl)
+        .then(res => res.json())
+        .then(messages => {
+          const log = document.getElementById("chat-log");
+          log.innerHTML = messages.map(msg =>
+            `<div class="message" style="color:${msg.color || '#333'}">[${new Date(msg.timestamp).toLocaleString()}] <strong>${msg.sender}</strong>: ${msg.message}</div>`
+          ).join('');
+          log.scrollTop = log.scrollHeight;
+        })
+        .catch(err => console.error("불러오기 에러:", err));
+    }
+
+    loadMessages();
+    setInterval(loadMessages, 5000);
+  </script>
+</body>
+</html>
