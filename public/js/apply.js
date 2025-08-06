@@ -13,8 +13,8 @@ document.addEventListener("DOMContentLoaded", function() {
     const formData = new FormData(form);
 
     try {
-      // 실제 서버 주소/포트 맞게 교체 (예: 3070포트)
-      const res = await fetch("https://orcax.cafe24.com:3070/api/apply", {
+      // ★ 여기만 onrender 주소로 교체!
+      const res = await fetch("https://orcax-franchise-backend.onrender.com/api/apply", {
         method: "POST",
         body: formData,
       });
