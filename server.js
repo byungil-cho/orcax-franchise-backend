@@ -18,3 +18,12 @@ mongoose.connect(process.env.MONGO_URI)
 app.use('/api/apply', applyRouter);
 
 // (서버 실행 등 이하 생략)
+// health check API
+app.get('/api/apply/status', async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    res.json({status: 'OK'});
+  } catch(e) {
+    res.status(500).json({status:'FAIL', message:e.message});
+  }
+});
