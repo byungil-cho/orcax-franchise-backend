@@ -1,38 +1,47 @@
-// public/js/apply.js
-
-document.addEventListener("DOMContentLoaded", function() {
-  const form = document.getElementById("applyForm");
-  const resultDiv = document.getElementById("result");
-
-  if (!form) return;
-
-  form.addEventListener("submit", async function(e) {
-    e.preventDefault();
-    resultDiv.innerHTML = "<span style='color:#ffd700;'>🚀 신청 정보를 전송 중입니다...</span>";
-
-    const formData = new FormData(form);
-
+async function checkServerStatus() {
     try {
-      // ★ 여기만 onrender 주소로 교체!
-      const res = await fetch("https://orcax-franchise-backend.onrender.com/api/apply", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        throw new Error("서버 응답 오류 (" + res.status + ")");
-      }
-
-      const data = await res.json();
-
-      if (data.success) {
-        resultDiv.innerHTML = "✅ <b>신청이 접수되었습니다!</b><br><span style='font-size:0.95em;color:#ffe164'>" + (data.message || "곧 확인 후 연락드리겠습니다.") + "</span>";
-        form.reset();
-      } else {
-        resultDiv.innerHTML = "❌ <b>전송 실패!</b><br><span style='color:#ffb999;'>" + (data.message || "서버에서 오류가 발생했습니다.") + "</span>";
-      }
-    } catch (err) {
-      resultDiv.innerHTML = "❌ <b>전송 실패!</b><br><span style='color:#ffb999;'>" + err.message + "</span>";
+        const res = await fetch('/api/apply/status');
+        const json = await res.json();
+        if (json.status === 'OK') {
+            document.getElementById('server-status').innerHTML = '<span style="color: #00c851;">● 서버 연결됨</span>';
+        } else {
+            throw new Error();
+        }
+    } catch {
+        document.getElementById('server-status').innerHTML = '<span style="color: #d32f2f;">● 서버 접속 불가 / 점검 중</span>';
     }
-  });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    checkServerStatus();
+
+    document.getElementById('applyForm').addEventListener('submit', async function(e){
+        e.preventDefault();
+        // 데이터 수집
+        const data = {
+            name: document.getElementById('name').value,
+            phone: document.getElementById('phone').value,
+            bizNo: document.getElementById('bizNo').value,
+            region: document.getElementById('region').value,
+            address: document.getElementById('address').value,
+            category: document.getElementById('category').value
+        };
+
+        try {
+            const res = await fetch('/api/apply', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const json = await res.json();
+            if(json.success){
+                alert('신청 완료!');
+                location.reload();
+            } else {
+                alert('신청 실패: ' + json.message);
+            }
+        } catch(err) {
+            alert('서버 오류!');
+        }
+    });
 });
