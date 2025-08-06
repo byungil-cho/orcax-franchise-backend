@@ -2,25 +2,49 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 
-// POST /api/apply (지원서 제출)
+// 간단한 Apply 모델 (스키마/필드 원하는대로 추가 가능)
+const ApplySchema = new mongoose.Schema({
+  owner: String,
+  phone: String,
+  biznum: String,
+  region: String,
+  addr: String,
+  biztype: String,
+  kakaoId: String,
+  nickname: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const Apply = mongoose.models.Apply || mongoose.model('Apply', ApplySchema);
+
+// 헬스체크 (GET)
+router.get('/status', (req, res) => {
+  res.json({ status: 'OK' });
+});
+
+// 신청서 제출 (POST)
 router.post('/', async (req, res) => {
   try {
-    // 클라이언트에서 받은 데이터
-    const { nickname, email, phone, message } = req.body;
+    const { owner, phone, biznum, region, addr, biztype, kakaoId, nickname } = req.body;
+    if (!kakaoId || !nickname) return res.status(401).json({ success: false, message: "로그인 필요" });
 
-    // (DB 저장/검증 로직은 추후 추가)
-    // 콘솔에 출력만 우선
-    console.log('Apply Request:', { nickname, email, phone, message });
+    const newApply = new Apply({ owner, phone, biznum, region, addr, biztype, kakaoId, nickname });
+    await newApply.save();
 
-    // 응답
-    res.json({
-      success: true,
-      message: '지원서가 정상적으로 접수되었습니다.',
-    });
-  } catch (error) {
-    console.error('apply.js error:', error);
-    res.status(500).json({ success: false, message: '서버 오류!' });
+    res.json({ success: true, message: "신청 완료!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'DB 오류' });
+  }
+});
+
+// 관리자: 신청내역 전체 리스트 (GET)
+router.get('/list', async (req, res) => {
+  try {
+    const applies = await Apply.find().sort({ createdAt: -1 });
+    res.json(applies);
+  } catch (err) {
+    res.status(500).json({ success: false, message: '신청내역 불러오기 실패' });
   }
 });
 
