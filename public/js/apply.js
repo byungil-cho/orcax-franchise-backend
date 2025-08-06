@@ -1,6 +1,6 @@
 async function checkServerStatus() {
     try {
-        const res = await fetch('/api/apply/status');
+        const res = await fetch('https://orcax-franchise-backend.onrender.com/api/apply/status');
         const json = await res.json();
         if (json.status === 'OK') {
             document.getElementById('server-status').innerHTML = '<span style="color: #00c851;">● 서버 연결됨</span>';
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         try {
-            const res = await fetch('/api/apply', {
+            const res = await fetch('https://orcax-franchise-backend.onrender.com/api/apply', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
