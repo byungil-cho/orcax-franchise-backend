@@ -1,75 +1,117 @@
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
+
 const app = express();
 const PORT = 3070;
+
+// [1] MongoDB 연결
+const MONGODB_URL = process.env.MONGODB_URL || 'mongodb://localhost:27017/orcax';
+mongoose.connect(MONGODB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('몽고DB 연결 성공!'))
+  .catch(err => {
+    console.error('몽고DB 연결 실패:', err);
+    process.exit(1);
+  });
+
+// [2] 몽고DB 스키마 및 모델 정의
+const UserSchema = new mongoose.Schema({
+  kakaoId: { type: String, required: true, unique: true },
+  nickname: String,
+  water: Number,
+  fertilizer: Number,
+  token: Number,
+  potato: Number,
+  barley: Number,
+  seedPotato: Number,
+  seedBarley: Number
+});
+const User = mongoose.model('User', UserSchema);
+
+const FranchiseSchema = new mongoose.Schema({
+  name: String,
+  owner: String,
+  phone: String,
+  status: { type: String, default: "신청" },
+  createdAt: { type: Date, default: Date.now }
+});
+const Franchise = mongoose.model('Franchise', FranchiseSchema);
+
+const MessageSchema = new mongoose.Schema({
+  nickname: String,
+  message: String,
+  ts: { type: Date, default: Date.now }
+});
+const Message = mongoose.model('Message', MessageSchema);
 
 app.use(cors());
 app.use(express.json());
 
-// --- [유저 자산 샘플 데이터] ---
-let userAssets = {
-  "kakao_1234": {
-    nickname: "고래잡이선장",
-    water: 10, fertilizer: 10, token: 100,
-    potato: 5, barley: 3, seedPotato: 2, seedBarley: 1
-  },
-  "kakao_test": {
-    nickname: "테스트회원",
-    water: 15, fertilizer: 7, token: 22,
-    potato: 2, barley: 0, seedPotato: 0, seedBarley: 0
-  }
-};
-
-// --- [프랜차이즈(가맹점) 신청 데이터] ---
-let franchiseApps = [
-  // { id: 1, name: "가맹점1", owner: "홍길동", phone: "010-1234-5678", status: "신청", createdAt: ... }
-];
-
-// --- [채팅 메시지 저장] ---
-let messages = []; // 최신 100개만
-
 // ────────────── 1. 자산 API ──────────────
-app.get('/api/me', (req, res) => {
+// 회원 자산 불러오기
+app.get('/api/me', async (req, res) => {
   const kakaoId = req.headers['x-kakao-id'];
-  const user = userAssets[kakaoId];
+  if (!kakaoId) return res.status(400).json({ error: "kakaoId 필요" });
+
+  let user = await User.findOne({ kakaoId });
   if (!user) return res.status(401).json({ error: "로그인 필요" });
+
+  res.json(user);
+});
+
+// 회원 신규 생성 (최초 로그인 시 자산 지급)
+app.post('/api/me', async (req, res) => {
+  const { kakaoId, nickname } = req.body;
+  if (!kakaoId || !nickname) return res.status(400).json({ error: "필수값 누락" });
+
+  let user = await User.findOne({ kakaoId });
+  if (user) return res.json(user);
+
+  user = await User.create({
+    kakaoId,
+    nickname,
+    water: 10,
+    fertilizer: 10,
+    token: 100,
+    potato: 5,
+    barley: 3,
+    seedPotato: 2,
+    seedBarley: 1
+  });
   res.json(user);
 });
 
 // ────────────── 2. 프랜차이즈(가맹점) API ──────────────
 // 전체 신청 리스트 조회
-app.get('/api/franchise', (req, res) => {
-  res.json(franchiseApps);
+app.get('/api/franchise', async (req, res) => {
+  const list = await Franchise.find().sort({ createdAt: -1 });
+  res.json(list);
 });
+
 // 신규 신청
-app.post('/api/franchise', (req, res) => {
+app.post('/api/franchise', async (req, res) => {
   const { name, owner, phone } = req.body;
   if (!name || !owner || !phone)
     return res.status(400).json({ error: "필수값 누락" });
-  const appData = {
-    id: franchiseApps.length + 1,
-    name, owner, phone,
-    status: "신청",
-    createdAt: new Date()
-  };
-  franchiseApps.push(appData);
-  res.json({ ok: true, id: appData.id });
+  const appData = await Franchise.create({ name, owner, phone });
+  res.json({ ok: true, id: appData._id });
 });
 
 // ────────────── 3. 채팅 메시지 API ──────────────
-app.get('/api/messages', (req, res) => {
-  res.json(messages.slice(-100));
+app.get('/api/messages', async (req, res) => {
+  const msgs = await Message.find().sort({ ts: -1 }).limit(100);
+  res.json(msgs.reverse());
 });
-app.post('/api/messages', (req, res) => {
+
+app.post('/api/messages', async (req, res) => {
   const { nickname, message } = req.body;
   if (!nickname || !message) return res.status(400).json({ error: "닉네임/메시지 없음" });
-  const msg = { nickname, message, ts: Date.now() };
-  messages.push(msg);
-  if (messages.length > 100) messages = messages.slice(-100);
+  await Message.create({ nickname, message });
   res.json({ ok: true });
 });
-app.delete('/api/messages', (req, res) => {
-  messages = [];
+
+app.delete('/api/messages', async (req, res) => {
+  await Message.deleteMany({});
   res.json({ ok: true });
 });
 
