@@ -1,24 +1,7 @@
-// routes/apply.js
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose');
+const Apply = require('../models/Apply');
 
-// 스키마 (폼 입력 필드 모두 반영)
-const ApplySchema = new mongoose.Schema({
-  name: String,
-  storeName: String,
-  phone: String,
-  corpnum: String,
-  region: String,
-  address: String,
-  type: String,
-  note: String,
-  createdAt: { type: Date, default: Date.now }
-});
-
-const Apply = mongoose.model('Apply', ApplySchema);
-
-// 가맹점 신청 (POST)
 router.post('/', async (req, res) => {
   try {
     const { name, phone, storeName, corpnum, region, address, type, note } = req.body;
@@ -33,7 +16,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// 신청 내역 전체 조회 (관리자용, GET)
 router.get('/all', async (req, res) => {
   try {
     const all = await Apply.find().sort({ createdAt: -1 });
