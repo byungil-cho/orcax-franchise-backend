@@ -1,36 +1,40 @@
+// server.js
 const express = require('express');
+const cors = require('cors');
 const mongoose = require('mongoose');
-const path = require('path');
-require('dotenv').config();
+const applyRouter = require('./routes/apply');
 
 const app = express();
 const PORT = process.env.PORT || 3070;
 
 // 미들웨어
+app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, 'public')));
 
-// 몽고DB 연결
-mongoose.connect(process.env.MONGODB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('✅ MongoDB 연결 성공'))
-    .catch((err) => console.error('❌ MongoDB 연결 실패', err));
-
-// 상태 체크 API
-app.get('/api/apply/status', async (req, res) => {
-    try {
-        await mongoose.connection.db.admin().ping();
-        res.json({ status: 'OK', db: true });
-    } catch (e) {
-        res.status(500).json({ status: 'FAIL', db: false, message: e.message });
-    }
+// 몽고DB 연결 (환경변수 또는 직접 입력)
+const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017/orcax-franchise';
+mongoose.connect(mongoUrl, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => {
+  console.log('MongoDB 연결 성공!');
+}).catch((err) => {
+  console.error('MongoDB 연결 실패:', err.message);
 });
 
-// 라우터
-const applyRouter = require('./routes/apply');
+// 가맹점 신청 라우터 연결
 app.use('/api/apply', applyRouter);
 
-// 서버 실행
+// 서버 상태 확인
+app.get('/api/apply/status', (req, res) => {
+  res.json({ status: 'OK', db: mongoose.connection.readyState === 1 });
+});
+
+// 루트 접속 시 메시지
+app.get('/', (req, res) => {
+  res.send('Franchise API Server');
+});
+
 app.listen(PORT, () => {
-    console.log(`🚀 서버가 포트 ${PORT}에서 실행 중입니다.`);
+  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
