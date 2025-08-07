@@ -1,3 +1,5 @@
+require('dotenv').config(); // ★ 반드시 맨 위에 선언!
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -19,9 +21,15 @@ mongoose.connect(MONGODB_URL, { useNewUrlParser: true, useUnifiedTopology: true 
     process.exit(1);
   });
 
-// 3. CORS는 오직 깃허브에서만 허용
+// 3. CORS: .env CLIENT_ORIGIN에 따라 허용 도메인 결정
+// 여러 도메인 허용하려면 .env에서 콤마(,)로 구분해서 입력도 가능
+const envOrigins = process.env.CLIENT_ORIGIN
+  ? process.env.CLIENT_ORIGIN.split(',').map(origin => origin.trim())
+  : ['https://byungil-cho.github.io'];
+// 예: CLIENT_ORIGIN=https://byungil-cho.github.io,http://orcax-survey-3060.onrender.com
+
 app.use(cors({
-  origin: ['https://byungil-cho.github.io'],
+  origin: envOrigins,
   credentials: true
 }));
 app.use(express.json());
@@ -110,4 +118,5 @@ app.post('/api/me', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log('OrcaX 운영DB(orcax) 서버 ON ::', PORT);
+  console.log('CORS 허용 도메인:', envOrigins);
 });
