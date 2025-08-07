@@ -4,17 +4,18 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = 3070;
 
-// ✅ 실제 운영 몽고DB 주소(orcax DB)로 교체 필요!
-const MONGODB_URL = process.env.MONGODB_URL || 'mongodb://localhost:27017/orcax';
+// ✅ 반드시 운영 DB 'orcax'로 연결!
+// 몽고 Atlas일 경우 (주소/계정/비번 실서버용으로 교체)
+const MONGODB_URL = process.env.MONGODB_URL || 'mongodb+srv://[계정]:[비번]@[클러스터주소]/orcax?retryWrites=true&w=majority';
 
 mongoose.connect(MONGODB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('몽고DB 연결 성공!'))
+  .then(() => console.log('몽고DB 연결 성공 (orcax DB만 사용)!'))
   .catch(err => {
     console.error('몽고DB 연결 실패:', err);
     process.exit(1);
   });
 
-// ⭐️ 깃허브 페이지만 CORS 허용!
+// ⭐️ 깃허브 페이지만 CORS 허용
 app.use(cors({
   origin: [
     'https://byungil-cho.github.io'
@@ -25,8 +26,7 @@ app.use(express.json());
 // -- 회원 (orcax.users) --
 const UserSchema = new mongoose.Schema({
   kakaoId: { type: String, required: true, unique: true },
-  nickname: String,
-  // ... (자산, 상태 등 추가 필드)
+  nickname: String
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -52,13 +52,11 @@ app.get('/api/apply/status', (req, res) => {
   res.json({ status: "OK" });
 });
 
-// -- 가맹점 신청 (회원만 허용, kakaoId/nickname 필수) --
+// -- 가맹점 신청 (회원만 허용) --
 app.post('/api/apply', async (req, res) => {
   try {
     const {
-      kakaoId,      // 로그인 회원 kakaoId
-      nickname,     // 로그인 회원 닉네임
-      name, storeName, phone, corpnum, region, address, type, note
+      kakaoId, nickname, name, storeName, phone, corpnum, region, address, type, note
     } = req.body;
 
     // 1. 카카오 회원 인증 필수
@@ -77,7 +75,7 @@ app.post('/api/apply', async (req, res) => {
       return res.status(400).json({ success: false, message: "필수값 누락" });
     }
 
-    // 4. 신청서 저장
+    // 4. 신청서 저장 (orcax.franchises만!)
     const appData = await Franchise.create({
       kakaoId, nickname, name, storeName, phone, corpnum, region, address, type, note, status: "신청"
     });
@@ -90,11 +88,11 @@ app.post('/api/apply', async (req, res) => {
 
 // -- 모든 가맹점 리스트 (관리자 용) --
 app.get('/api/apply', async (req, res) => {
-  const list = await Franchise.find().sort({ createdAt: -1 });
+  const list = await Franchise.find().sort({ createdAt: -1 }); // orcax.franchises!
   res.json(list);
 });
 
-// -- 회원 등록 API (카카오 로그인 후 반드시 최초 1회 호출) --
+// -- 회원 등록 API (카카오 로그인 후 최초 1회) --
 app.post('/api/me', async (req, res) => {
   const { kakaoId, nickname } = req.body;
   if (!kakaoId || !nickname) return res.status(400).json({ error: "필수값 누락" });
@@ -105,11 +103,10 @@ app.post('/api/me', async (req, res) => {
   user = await User.create({
     kakaoId,
     nickname
-    // ...필요시 자산 필드 추가
   });
   res.json(user);
 });
 
 app.listen(PORT, () => {
-  console.log('OrcaX 실전 가맹점/회원 서버 ON ::', PORT);
+  console.log('OrcaX 운영DB(orcax) 서버 ON ::', PORT);
 });
