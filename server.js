@@ -1,83 +1,54 @@
+// OrcaX 채팅 서버 (3070번 포트 예시)
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
-const applyRouter = require('./routes/apply');
-
 const app = express();
-const PORT = process.env.PORT || 3070;
+const PORT = 3070;
+
+// 메모리 저장 (실운영은 DB 교체 권장)
+let messages = [];
+let userSet = new Set();
+let lastActive = {}; // {nick: timestamp}
 
 app.use(cors());
 app.use(express.json());
 
-// 몽고DB 연결 (환경변수)
-const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017/orcax-franchise';
-mongoose.connect(mongoUrl, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ MongoDB 연결 성공!');
-})
-.catch((err) => {
-  console.error('❌ MongoDB 연결 실패:', err.message);
-  process.exit(1);
+// 서버 상태 체크 (index-10.html에서 /api/ping 으로 사용)
+app.get('/api/ping', (req, res) => res.json({status:"OK"}));
+
+// 유저 리스트 (최근 90초 내 활동)
+app.get('/api/users', (req, res) => {
+  const now = Date.now();
+  // 90초 이내 활동한 닉만 표시 (퇴장 자동제거)
+  const users = Array.from(userSet).filter(nick => now - (lastActive[nick]||0) < 90000);
+  res.json(users.map(nick => ({nick})));
 });
 
-// 프랜차이즈 라우터
-app.use('/api/apply', applyRouter);
-
-// ====== 실시간 입장자 관리(메모리) ======
-const onlineUsers = new Set();
-
-app.post('/api/online-users', (req, res) => {
-  const { nickname } = req.body;
-  if (nickname) onlineUsers.add(nickname);
-  res.json({ success: true, users: Array.from(onlineUsers) });
-});
-
-app.get('/api/online-users', (req, res) => {
-  res.json({ users: Array.from(onlineUsers) });
-});
-
-app.post('/api/online-users/exit', (req, res) => {
-  const { nickname } = req.body;
-  onlineUsers.delete(nickname);
-  res.json({ success: true });
-});
-
-// ====== 메시지 전송(메모리) ======
-const messages = [];
-
-app.post('/api/messages', (req, res) => {
-  const { sender, content } = req.body;
-  if (!sender || !content) {
-    return res.status(400).json({ success: false, message: "필수값 누락" });
-  }
-  const newMsg = { sender, content, createdAt: new Date() };
-  messages.push(newMsg);
-  res.json({ success: true, message: "전송 성공", data: newMsg });
-});
-
+// 메시지 전체 조회
 app.get('/api/messages', (req, res) => {
-  res.json({ success: true, messages });
+  res.json(messages.slice(-50)); // 최근 50개만
 });
 
-// ====== 전체 메시지 삭제 ======
+// 메시지 등록
+app.post('/api/messages', (req, res) => {
+  const {nick, text} = req.body;
+  if (!nick || !text) return res.status(400).json({ok:false, error:"닉네임/내용 누락"});
+  const now = Date.now();
+  userSet.add(nick);
+  lastActive[nick] = now;
+  messages.push({nick, text, ts: now});
+  if (messages.length > 200) messages = messages.slice(-100); // 오래된 메시지 삭제
+  res.json({ok:true});
+});
+
+// 전체 메시지 삭제
 app.delete('/api/messages', (req, res) => {
-  messages.length = 0;
-  res.json({ success: true, message: "모든 메시지 삭제됨" });
+  messages = [];
+  res.json({ok:true});
 });
 
-// ====== 서버 상태 ======
-app.get('/api/apply/status', (req, res) => {
-  res.json({ status: 'OK', db: mongoose.connection.readyState === 1 });
-});
-
-// 루트 안내
-app.get('/', (req, res) => {
-  res.send('Franchise API Server (가맹점 + 메시지 + 접속자 관리 + 전체삭제)');
-});
+// 유저가 퇴장할 때(추가 구현)
+// app.post('/api/leave', (req, res) => { ... });
 
 app.listen(PORT, () => {
-  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+  console.log('OrcaX 채팅 서버 ON ::', PORT);
 });
