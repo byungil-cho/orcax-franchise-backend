@@ -2,11 +2,13 @@ const mongoose = require('mongoose');
 
 const ApplySchema = new mongoose.Schema({
     name: String,
+    storeName: String,
     phone: String,
-    bizNo: String,
+    corpnum: String,
     region: String,
     address: String,
-    category: String,
+    type: String,
+    note: String,
     createdAt: { type: Date, default: Date.now }
 });
 
