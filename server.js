@@ -4,10 +4,9 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = 3070;
 
-// (실제 몽고 연결 주소로 교체)
+// ✅ 실제 운영 몽고DB 주소(orcax DB)로 교체 필요!
 const MONGODB_URL = process.env.MONGODB_URL || 'mongodb://localhost:27017/orcax';
 
-// ✅ 항상 orcax DB만!
 mongoose.connect(MONGODB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('몽고DB 연결 성공!'))
   .catch(err => {
@@ -15,18 +14,26 @@ mongoose.connect(MONGODB_URL, { useNewUrlParser: true, useUnifiedTopology: true 
     process.exit(1);
   });
 
+// ⭐️ 깃허브 페이지만 CORS 허용!
+app.use(cors({
+  origin: [
+    'https://byungil-cho.github.io'
+  ]
+}));
+app.use(express.json());
+
 // -- 회원 (orcax.users) --
 const UserSchema = new mongoose.Schema({
   kakaoId: { type: String, required: true, unique: true },
   nickname: String,
-  // ... (기타 자산 필드)
+  // ... (자산, 상태 등 추가 필드)
 });
 const User = mongoose.model('User', UserSchema);
 
 // -- 가맹점 (orcax.franchises) --
 const FranchiseSchema = new mongoose.Schema({
-  kakaoId: String,   // 신청자 카카오ID (필수)
-  nickname: String,  // 신청자 닉네임 (필수)
+  kakaoId: String,   // 신청자 카카오ID
+  nickname: String,  // 신청자 닉네임
   name: String,      // 대표자명
   storeName: String, // 매장명
   phone: String,
@@ -40,15 +47,12 @@ const FranchiseSchema = new mongoose.Schema({
 });
 const Franchise = mongoose.model('Franchise', FranchiseSchema);
 
-app.use(cors());
-app.use(express.json());
-
 // -- 서버 상태 확인 --
 app.get('/api/apply/status', (req, res) => {
   res.json({ status: "OK" });
 });
 
-// -- 가맹점 신청 (회원만 허용, kakaoId/nickname 반드시 전달) --
+// -- 가맹점 신청 (회원만 허용, kakaoId/nickname 필수) --
 app.post('/api/apply', async (req, res) => {
   try {
     const {
@@ -100,12 +104,12 @@ app.post('/api/me', async (req, res) => {
 
   user = await User.create({
     kakaoId,
-    nickname,
+    nickname
     // ...필요시 자산 필드 추가
   });
   res.json(user);
 });
 
 app.listen(PORT, () => {
-  console.log('OrcaX 가맹점(회원 인증) 서버 ON ::', PORT);
+  console.log('OrcaX 실전 가맹점/회원 서버 ON ::', PORT);
 });
