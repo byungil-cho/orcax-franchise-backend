@@ -1,4 +1,3 @@
-// server.js (3070포트: 프랜차이즈 + 메시지 전송 통합)
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -10,7 +9,7 @@ const PORT = process.env.PORT || 3070;
 app.use(cors());
 app.use(express.json());
 
-// 몽고DB 연결 (MONGODB_URL 환경변수 사용)
+// 몽고DB 연결 (환경변수)
 const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017/orcax-franchise';
 mongoose.connect(mongoUrl, {
   useNewUrlParser: true,
@@ -24,10 +23,29 @@ mongoose.connect(mongoUrl, {
   process.exit(1);
 });
 
-// 프랜차이즈 가맹점 신청 라우터
+// 프랜차이즈 라우터
 app.use('/api/apply', applyRouter);
 
-// ====== 메시지 전송 라우터 (메모리 저장, 테스트용) ======
+// ====== 실시간 입장자 관리(메모리) ======
+const onlineUsers = new Set();
+
+app.post('/api/online-users', (req, res) => {
+  const { nickname } = req.body;
+  if (nickname) onlineUsers.add(nickname);
+  res.json({ success: true, users: Array.from(onlineUsers) });
+});
+
+app.get('/api/online-users', (req, res) => {
+  res.json({ users: Array.from(onlineUsers) });
+});
+
+app.post('/api/online-users/exit', (req, res) => {
+  const { nickname } = req.body;
+  onlineUsers.delete(nickname);
+  res.json({ success: true });
+});
+
+// ====== 메시지 전송(메모리) ======
 const messages = [];
 
 app.post('/api/messages', (req, res) => {
@@ -43,16 +61,21 @@ app.post('/api/messages', (req, res) => {
 app.get('/api/messages', (req, res) => {
   res.json({ success: true, messages });
 });
-// ===============================================
 
-// 서버 상태 확인 API
+// ====== 전체 메시지 삭제 ======
+app.delete('/api/messages', (req, res) => {
+  messages.length = 0;
+  res.json({ success: true, message: "모든 메시지 삭제됨" });
+});
+
+// ====== 서버 상태 ======
 app.get('/api/apply/status', (req, res) => {
   res.json({ status: 'OK', db: mongoose.connection.readyState === 1 });
 });
 
-// 루트 접속 안내 메시지
+// 루트 안내
 app.get('/', (req, res) => {
-  res.send('Franchise API Server (가맹점 + 메시지 전송)');
+  res.send('Franchise API Server (가맹점 + 메시지 + 접속자 관리 + 전체삭제)');
 });
 
 app.listen(PORT, () => {
