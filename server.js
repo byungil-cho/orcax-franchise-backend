@@ -1,4 +1,4 @@
-// server.js — OrcaX API (users 자산 조회/업서트 + 채팅 + 디버그)
+// server.js — OrcaX API (users 자산 조회/업서트 + 채팅 + 가맹신청 + 디버그)
 // ENV: MONGODB_URL (or MONGODB_URI), DB_NAME=orcax, CLIENT_ORIGIN, PORT
 require('dotenv').config();
 
@@ -24,7 +24,7 @@ mongoose
 /* ================= CORS ================= */
 const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN
   ? process.env.CLIENT_ORIGIN.split(',').map(s=>s.trim())
-  : ['https://byungil-cho.github.io']
+  : ['https://byungil-cho.github.io'] // 필요시 , 로 추가
 );
 app.use(cors({
   origin: (origin, cb)=> cb(null, !origin || ALLOWED_ORIGINS.includes(origin)),
@@ -33,7 +33,7 @@ app.use(cors({
 app.use(express.json());
 
 /* ================= Schemas ================= */
-// 가맹 신청
+// 가맹 신청(신규: applies)
 const FranchiseSchema = new mongoose.Schema({
   kakaoId: String,
   nickname: String,
@@ -49,6 +49,24 @@ const FranchiseSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'applies' });
 const Franchise = mongoose.models.Franchise || mongoose.model('Franchise', FranchiseSchema);
+
+// 가맹 신청(레거시: applications) — 조회용만
+const LegacyApplicationSchema = new mongoose.Schema({
+  kakaoId: String,
+  nickname: String,
+  name: String,
+  storeName: String,
+  phone: String,
+  corpnum: String,
+  region: String,
+  address: String,
+  type: String,
+  note: String,
+  status: { type: String, default: '신청' },
+  createdAt: { type: Date, default: Date.now }
+}, { collection: 'applications' });
+const LegacyApplication = mongoose.models.LegacyApplication
+  || mongoose.model('LegacyApplication', LegacyApplicationSchema);
 
 // 채팅
 const MessageSchema = new mongoose.Schema({
@@ -121,8 +139,10 @@ function projectAssets(u, fallbackNickname) {
 }
 
 /* ================= Routes ================= */
-// 가맹 신청
+// 가맹 신청 상태
 app.get('/api/apply/status', (req,res)=> res.json({ status:'OK' }));
+
+// 가맹 신청 등록(신규: applies 에만 저장)
 app.post('/api/apply', async (req,res)=>{
   try{
     const { kakaoId, nickname, name, storeName, phone, corpnum, region, address, type, note } = req.body || {};
@@ -130,26 +150,41 @@ app.post('/api/apply', async (req,res)=>{
       return res.status(400).json({ success:false, message:'필수값 누락' });
     }
     const doc = await Franchise.create({ kakaoId, nickname, name, storeName, phone, corpnum, region, address, type, note, status:'신청' });
-    res.json({ success:true, id: doc._id });
+    res.json({ success:true, id: String(doc._id) });
   } catch(e){
     console.error('[APPLY] save error:', e);
-    res.status(500).json({ success:false, message:'DB 저장 오류' });
+    res.status(500).json({ success:false, message:'DB 저장 오류', detail:String(e?.message||e) });
   }
 });
+
+// 가맹 신청 목록(신규 applies + 레거시 applications 합쳐서 반환)
 app.get('/api/apply', async (req,res)=>{
   try{
-    const list = await Franchise.find().sort({ createdAt:-1 });
-    res.json(list);
+    const a = await Franchise.find().lean();          // applies
+    const b = await LegacyApplication.find().lean();  // applications (legacy)
+
+    // 합치고 createdAt desc 정렬 + 중복 제거(같은 _id 있으면 1개만)
+    const byId = new Map();
+    [...a, ...b].forEach(doc=>{
+      const key = String(doc._id || '') + (doc.createdAt ? '_' + new Date(doc.createdAt).getTime() : '');
+      if (!byId.has(key)) byId.set(key, doc);
+    });
+
+    const merged = Array.from(byId.values()).sort((x,y)=>{
+      return new Date(y.createdAt || 0) - new Date(x.createdAt || 0);
+    });
+
+    res.json(merged);
   } catch(e){
     console.error('[APPLY] list error:', e);
-    res.status(500).json({ error:'DB 조회 실패' });
+    res.status(500).json({ error:'DB 조회 실패', detail:String(e?.message||e) });
   }
 });
 
-// Presence(메모리)
+/* ------- Presence(메모리) ------- */
 const online = new Set();
 
-// 공통 라우트 묶음: /api/apply, /api, /
+/* ------- 공통 라우트 묶음: /api/apply, /api, / ------- */
 function registerRoutes(prefix){
   const p = (path)=> `${prefix}${path.startsWith('/') ? path : `/${path}`}`;
 
@@ -161,9 +196,9 @@ function registerRoutes(prefix){
       const { kakaoId, nickname } = req.body || {};
       if (!kakaoId || !nickname) return res.status(400).json({ error:'kakaoId, nickname required' });
 
-      // 🔧 여기서 'nickname'을 검색조건에서 빼고 $set 으로만 갱신 (충돌 에러 해결)
+      // 검색 조건에서는 kakaoId만, 변경값은 $set — 닉네임 충돌 해결
       const user = await User.findOneAndUpdate(
-        { kakaoId },                        // <-- 검색은 kakaoId만
+        { kakaoId },
         { $set: { nickname, updatedAt: new Date() }, $setOnInsert: { kakaoId } },
         { upsert: true, new: true }
       ).lean();
@@ -262,7 +297,7 @@ function registerRoutes(prefix){
   });
 }
 
-// 프리픽스 3종 등록
+// 프리픽스 3종 등록 (프론트가 어디로 치든 다 받기)
 registerRoutes('/api/apply');
 registerRoutes('/api');
 registerRoutes('');
@@ -272,4 +307,5 @@ app.listen(PORT, ()=>{
   console.log('🚀 OrcaX API on :', PORT);
   console.log('CORS allowed origins:', ALLOWED_ORIGINS);
 });
+
 
