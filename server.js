@@ -181,6 +181,28 @@ app.get('/api/apply', async (req,res)=>{
   }
 });
 
+// 가맹 신청 삭제 (신규 + 레거시 둘 다 지원)
+app.delete('/api/apply/delete/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: 'ID required' });
+
+    // applies에서 삭제 시도
+    let deleted = await Franchise.findByIdAndDelete(id);
+    if (deleted) return res.json({ success: true, source: 'applies' });
+
+    // 없으면 레거시 applications에서 삭제 시도
+    deleted = await LegacyApplication.findByIdAndDelete(id);
+    if (deleted) return res.json({ success: true, source: 'applications' });
+
+    // 둘 다 없으면
+    return res.status(404).json({ success: false, message: 'Not found' });
+  } catch (e) {
+    console.error('[APPLY] delete error:', e);
+    res.status(500).json({ success: false, message: 'DB 삭제 오류', detail: String(e?.message || e) });
+  }
+});
+
 /* ------- Presence(메모리) ------- */
 const online = new Set();
 
@@ -196,7 +218,6 @@ function registerRoutes(prefix){
       const { kakaoId, nickname } = req.body || {};
       if (!kakaoId || !nickname) return res.status(400).json({ error:'kakaoId, nickname required' });
 
-      // 검색 조건에서는 kakaoId만, 변경값은 $set — 닉네임 충돌 해결
       const user = await User.findOneAndUpdate(
         { kakaoId },
         { $set: { nickname, updatedAt: new Date() }, $setOnInsert: { kakaoId } },
@@ -211,12 +232,10 @@ function registerRoutes(prefix){
     }
   };
 
-  // POST
   app.post(p('/me'),      meHandler);
   app.post(p('/user/me'), meHandler);
   app.post(p('/profile'), meHandler);
 
-  // GET 폴백(테스트/프록시 이슈 대비)
   app.get(p('/me'),      (req,res)=>{ req.body={ kakaoId:req.query.kakaoId, nickname:req.query.nickname }; return meHandler(req,res); });
   app.get(p('/user/me'), (req,res)=>{ req.body={ kakaoId:req.query.kakaoId, nickname:req.query.nickname }; return meHandler(req,res); });
   app.get(p('/profile'), (req,res)=>{ req.body={ kakaoId:req.query.kakaoId, nickname:req.query.nickname }; return meHandler(req,res); });
@@ -297,15 +316,14 @@ function registerRoutes(prefix){
   });
 }
 
-// 프리픽스 3종 등록 (프론트가 어디로 치든 다 받기)
 registerRoutes('/api/apply');
 registerRoutes('/api');
 registerRoutes('');
 
-/* ================= Boot ================= */
 app.listen(PORT, ()=>{
   console.log('🚀 OrcaX API on :', PORT);
   console.log('CORS allowed origins:', ALLOWED_ORIGINS);
 });
+
 
 
