@@ -1,5 +1,5 @@
-// server.js (통합 완성본)
-// env: MONGODB_URL, (optional) DB_NAME, CLIENT_ORIGIN, PORT
+// server.js (최신 통합본)
+// 환경변수: MONGODB_URL, (optional) DB_NAME, CLIENT_ORIGIN, PORT
 require('dotenv').config();
 
 const express  = require('express');
@@ -101,7 +101,7 @@ const UserSchema = new mongoose.Schema({
 }, { collection:'users' });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// 농장 관련(필드명/컬렉션명은 실제에 맞게 쓰되, 우선 기본 스키마로)
+// 농장 관련(필드명/컬렉션명은 실제에 맞게 수정 필요)
 const Farm = mongoose.models.Farm || mongoose.model('Farm', new mongoose.Schema({
   kakaoId: String,
   waterUsed: Number,
@@ -126,17 +126,14 @@ const online = new Set();
 
 // -----------------------------------------------------
 // (추가) 실시간 계산 함수: /me 응답 생성
-//  - User 기본값 + farms/harvests/seedinventories 집계
 // -----------------------------------------------------
 async function computeMe(kakaoId, nickname){
-  // 기본 사용자 upsert (닉네임 최신화)
   const base = await User.findOneAndUpdate(
     { kakaoId },
     { $setOnInsert: { kakaoId, nickname }, $set: { nickname, updatedAt: new Date() } },
     { upsert: true, new: true }
   ).lean();
 
-  // 병렬 집계
   const [farmAgg, invDoc, harvestAgg] = await Promise.all([
     Farm.aggregate([
       { $match: { kakaoId } },
@@ -153,16 +150,13 @@ async function computeMe(kakaoId, nickname){
   const inv  = invDoc || { seedPotato:0, seedBarley:0 };
   const hv   = harvestAgg?.[0] || { token:0, potato:0, barley:0 };
 
-  // 최종 산출 예시: 기본 보유 - 사용량 + 수확량 (필요시 비즈니스 로직 조정)
-  const water      = Math.max((base.water ?? 0)      - (farm.waterUsed ?? 0), 0);
-  const fertilizer = Math.max((base.fertilizer ?? 0) - (farm.fertilizerUsed ?? 0), 0);
-  const token      = (base.token ?? 0) + (hv.token ?? 0); // 수확 토큰 누적 가정
-  const potato     = (base.potato ?? 0) + (hv.potato ?? 0);
-  const barley     = (base.barley ?? 0) + (hv.barley ?? 0);
-
   return {
     nickname:   base.nickname || nickname || '손님',
-    water, fertilizer, token, potato, barley,
+    water:      Math.max((base.water ?? 0)      - (farm.waterUsed ?? 0), 0),
+    fertilizer: Math.max((base.fertilizer ?? 0) - (farm.fertilizerUsed ?? 0), 0),
+    token:      (base.token ?? 0) + (hv.token ?? 0),
+    potato:     (base.potato ?? 0) + (hv.potato ?? 0),
+    barley:     (base.barley ?? 0) + (hv.barley ?? 0),
     seedPotato: inv.seedPotato ?? 0,
     seedBarley: inv.seedBarley ?? 0
   };
@@ -177,8 +171,8 @@ function registerRoutes(prefix){
   // 헬스
   app.get(p('/status'), (req,res)=> res.json({ status:'OK' }));
 
-  // 자산(실시간 계산)
-  app.post(p('/me'), async (req,res)=>{
+  // 자산: /me, /user/me, /profile 모두 지원
+  const meHandler = async (req,res)=>{
     try{
       const { kakaoId, nickname } = req.body || {};
       if (!kakaoId || !nickname) return res.status(400).json({ error:'kakaoId, nickname required' });
@@ -188,9 +182,12 @@ function registerRoutes(prefix){
       console.error('ME error:', e);
       res.status(500).json({ error:'server error' });
     }
-  });
+  };
+  app.post(p('/me'), meHandler);
+  app.post(p('/user/me'), meHandler);
+  app.post(p('/profile'), meHandler);
 
-  // 채팅: 목록
+  // 채팅
   app.get(p('/chat'), async (req,res)=>{
     const docs = await Message.find({}, { _id:0, __v:0 }).sort({ ts:1 }).limit(200).lean();
     res.json(docs);
@@ -199,8 +196,6 @@ function registerRoutes(prefix){
     const docs = await Message.find({}, { _id:0, __v:0 }).sort({ ts:1 }).limit(200).lean();
     res.json(docs);
   });
-
-  // 채팅: 전송
   app.post(p('/chat'), async (req,res)=>{
     const { kakaoId, nickname, message } = req.body || {};
     if (!nickname || !message) return res.status(400).json({ error:'nickname, message required' });
@@ -213,8 +208,6 @@ function registerRoutes(prefix){
     await Message.create({ kakaoId, nickname, message });
     res.json({ ok:true });
   });
-
-  // 채팅: 전체 삭제(관리용)
   app.delete(p('/chat/clear'), async (req,res)=>{
     await Message.deleteMany({});
     res.json({ ok:true });
@@ -249,7 +242,7 @@ function registerRoutes(prefix){
   app.get(p('/chat/joiners'),  (req,res)=> res.json({ joiners:[...online] }));
 }
 
-// 프론트 자동탐색에 맞춰 3개 프리픽스 모두 지원
+// 세 프리픽스 모두 등록
 registerRoutes('/api/apply');
 registerRoutes('/api');
 registerRoutes('');
