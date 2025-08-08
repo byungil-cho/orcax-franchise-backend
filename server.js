@@ -1,4 +1,4 @@
-// server.js (최신 통합본, 안전 집계 + 다중 경로 지원)
+// server.js — OrcaX 통합본 (users 컬렉션 직조회 버전)
 // ENV: MONGODB_URL, (optional) DB_NAME, CLIENT_ORIGIN, PORT
 require('dotenv').config();
 
@@ -9,7 +9,7 @@ const mongoose = require('mongoose');
 const app  = express();
 const PORT = process.env.PORT || 3070;
 
-/* ===================== Mongo 연결 ===================== */
+/* ============ Mongo 연결 ============ */
 const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGODB_URI;
 const DB_NAME     = process.env.DB_NAME || 'orcax';
 if (!MONGODB_URL) {
@@ -21,7 +21,7 @@ mongoose
   .then(() => console.log('✅ MongoDB connected:', DB_NAME))
   .catch(err => { console.error('❌ MongoDB connect error:', err.message); process.exit(1); });
 
-/* ===================== CORS ===================== */
+/* ============ CORS ============ */
 const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN
   ? process.env.CLIENT_ORIGIN.split(',').map(s=>s.trim())
   : ['https://byungil-cho.github.io']
@@ -32,7 +32,8 @@ app.use(cors({
 }));
 app.use(express.json());
 
-/* ===================== (기존) 가맹 신청 API ===================== */
+/* ============ 스키마 ============ */
+// 가맹 신청
 const FranchiseSchema = new mongoose.Schema({
   kakaoId: String,
   nickname: String,
@@ -49,8 +50,80 @@ const FranchiseSchema = new mongoose.Schema({
 }, { collection: 'applies' });
 const Franchise = mongoose.models.Franchise || mongoose.model('Franchise', FranchiseSchema);
 
-app.get('/api/apply/status', (req,res)=> res.json({ status:'OK' }));
+// 채팅
+const MessageSchema = new mongoose.Schema({
+  kakaoId:  { type:String, index:true },
+  nickname: { type:String, required:true },
+  message:  { type:String, required:true },
+  ts:       { type:Number, default:()=>Date.now(), index:true }
+}, { collection:'messages' });
+const Message = mongoose.models.Message || mongoose.model('Message', MessageSchema);
 
+// 사용자(자산 저장되는 컬렉션)
+const UserSchema = new mongoose.Schema({
+  kakaoId:    { type:String, unique:true, index:true },
+  nickname:   { type:String, index:true },
+  email:      { type:String },
+  // 기본 자산
+  water:      { type:Number, default:0 },
+  fertilizer: { type:Number, default:0 },
+  token:      { type:Number, default:0 }, // 일부 계정은 orcx 필드 사용 → 아래에서 매핑함
+  potato:     { type:Number, default:0 },
+  barley:     { type:Number, default:0 },
+  // 씨앗/창고 등
+  seedPotato: { type:Number, default:0 },
+  seedBarley: { type:Number, default:0 },
+  storage:    { type:Object, default:{} }, // { gamja, bori, ... }
+  growth:     { type:Object, default:{} },  // { potato, barley, ... }
+  products:   { type:Object, default:{} },
+  orcx:       { type:Number, default:0 },  // 토큰 대용 필드로 쓰이는 케이스
+  updatedAt:  { type:Date, default:Date.now }
+}, { collection:'users' });
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
+
+/* ============ 헬퍼 ============ */
+const n = v => Number.isFinite(+v) ? +v : 0;
+
+// users 문서에서 화면 표시에 필요한 자산만 깔끔하게 뽑기
+function projectAssets(u, fallbackNickname) {
+  if (!u) return {
+    nickname: fallbackNickname || '손님',
+    water: 0, fertilizer: 0, token: 0,
+    potato: 0, barley: 0,
+    seedPotato: 0, seedBarley: 0,
+  };
+
+  // 토큰: token 또는 orcx 중 존재하는 값 사용
+  const token = ('token' in u) ? n(u.token) : n(u.orcx);
+
+  // 감자/보리: storage.gamja/bori → growth.potato/barley → 최상위 필드 순서로 폴백
+  const potato = ('storage' in u && 'gamja' in (u.storage || {}))
+                  ? n(u.storage.gamja)
+                  : ('growth' in u && 'potato' in (u.growth || {}))
+                    ? n(u.growth.potato)
+                    : n(u.potato);
+
+  const barley = ('storage' in u && 'bori' in (u.storage || {}))
+                  ? n(u.storage.bori)
+                  : ('growth' in u && 'barley' in (u.growth || {}))
+                    ? n(u.growth.barley)
+                    : n(u.barley);
+
+  return {
+    nickname:   u.nickname || fallbackNickname || '손님',
+    water:      n(u.water),
+    fertilizer: n(u.fertilizer),
+    token,
+    potato,
+    barley,
+    seedPotato: n(u.seedPotato),
+    seedBarley: n(u.seedBarley),
+  };
+}
+
+/* ============ 라우팅 ============ */
+// 가맹 신청
+app.get('/api/apply/status', (req,res)=> res.json({ status:'OK' }));
 app.post('/api/apply', async (req,res)=>{
   try{
     const { kakaoId, nickname, name, storeName, phone, corpnum, region, address, type, note } = req.body || {};
@@ -64,7 +137,6 @@ app.post('/api/apply', async (req,res)=>{
     res.status(500).json({ success:false, message:'DB 저장 오류' });
   }
 });
-
 app.get('/api/apply', async (req,res)=>{
   try{
     const list = await Franchise.find().sort({ createdAt:-1 });
@@ -75,121 +147,33 @@ app.get('/api/apply', async (req,res)=>{
   }
 });
 
-/* ===================== (추가) 공용 스키마들 ===================== */
-// 채팅
-const MessageSchema = new mongoose.Schema({
-  kakaoId:  { type:String, index:true },
-  nickname: { type:String, required:true },
-  message:  { type:String, required:true },
-  ts:       { type:Number, default:()=>Date.now(), index:true }
-}, { collection:'messages' });
-const Message = mongoose.models.Message || mongoose.model('Message', MessageSchema);
-
-// 사용자(보유 기본값/최근 닉네임)
-const UserSchema = new mongoose.Schema({
-  kakaoId:    { type:String, unique:true, index:true },
-  nickname:   { type:String, index:true },
-  water:      { type:Number, default:0 },
-  fertilizer: { type:Number, default:0 },
-  token:      { type:Number, default:0 },
-  potato:     { type:Number, default:0 },
-  barley:     { type:Number, default:0 },
-  seedPotato: { type:Number, default:0 },
-  seedBarley: { type:Number, default:0 },
-  updatedAt:  { type:Date, default:Date.now }
-}, { collection:'users' });
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
-
-// 농장 관련(이름/필드 실제 환경에 맞게 필요 시 수정)
-const Farm = mongoose.models.Farm || mongoose.model('Farm', new mongoose.Schema({
-  kakaoId: String,
-  waterUsed: Number,
-  fertilizerUsed: Number
-}, { collection:'farms' }));
-
-const Inventory = mongoose.models.Inventory || mongoose.model('Inventory', new mongoose.Schema({
-  kakaoId: String,
-  seedPotato: Number,
-  seedBarley: Number
-}, { collection:'seedinventories' }));
-
-const Harvest = mongoose.models.Harvest || mongoose.model('Harvest', new mongoose.Schema({
-  kakaoId: String,
-  potato: Number,
-  barley: Number,
-  token: Number
-}, { collection:'harvests' }));
-
-// Presence(간단, 메모리)
+// Presence(메모리)
 const online = new Set();
 
-/* ===================== (추가) 실시간 계산 함수 (/me) ===================== */
-async function computeMeSafe(kakaoId, nickname){
-  // 기본 사용자 upsert
-  const base = await User.findOneAndUpdate(
-    { kakaoId },
-    { $setOnInsert: { kakaoId, nickname }, $set: { nickname, updatedAt: new Date() } },
-    { upsert: true, new: true }
-  ).lean();
-
-  // 각 컬렉션 집계/조회 (부분 실패해도 전체는 성공하도록 방어)
-  let farm = { waterUsed:0, fertilizerUsed:0 };
-  let inv  = { seedPotato:0, seedBarley:0 };
-  let hv   = { token:0, potato:0, barley:0 };
-
-  try {
-    const agg = await Farm.aggregate([
-      { $match: { kakaoId } },
-      { $group: { _id:null, waterUsed:{ $sum:'$waterUsed' }, fertilizerUsed:{ $sum:'$fertilizerUsed' } } }
-    ]);
-    farm = agg?.[0] || farm;
-  } catch (e) { console.error('[ME] farms agg error:', e?.message || e); }
-
-  try {
-    const doc = await Inventory.findOne({ kakaoId }).lean();
-    if (doc) inv = doc;
-  } catch (e) { console.error('[ME] inventory find error:', e?.message || e); }
-
-  try {
-    const agg = await Harvest.aggregate([
-      { $match: { kakaoId } },
-      { $group: { _id:null, token:{ $sum:'$token' }, potato:{ $sum:'$potato' }, barley:{ $sum:'$barley' } } }
-    ]);
-    hv = agg?.[0] || hv;
-  } catch (e) { console.error('[ME] harvest agg error:', e?.message || e); }
-
-  // NaN 방지
-  const n = (v)=> Number.isFinite(+v) ? +v : 0;
-
-  return {
-    nickname:   base.nickname || nickname || '손님',
-    water:      Math.max(n(base.water)      - n(farm.waterUsed), 0),
-    fertilizer: Math.max(n(base.fertilizer) - n(farm.fertilizerUsed), 0),
-    token:      n(base.token)  + n(hv.token),
-    potato:     n(base.potato) + n(hv.potato),
-    barley:     n(base.barley) + n(hv.barley),
-    seedPotato: n(inv.seedPotato),
-    seedBarley: n(inv.seedBarley)
-  };
-}
-
-/* ===================== (추가) 공통 라우트 등록 ===================== */
+// 공통 라우트 묶음: /api/apply, /api, /
 function registerRoutes(prefix){
   const p = (path)=> `${prefix}${path.startsWith('/') ? path : `/${path}`}`;
 
-  // 헬스
   app.get(p('/status'), (req,res)=> res.json({ status:'OK' }));
 
-  // 자산: /me, /user/me, /profile 모두 같은 핸들러
+  // 자산: users 컬렉션에서 바로 조회
   const meHandler = async (req,res)=>{
     try{
       const { kakaoId, nickname } = req.body || {};
       if (!kakaoId || !nickname) return res.status(400).json({ error:'kakaoId, nickname required' });
-      const me = await computeMeSafe(kakaoId, nickname);
-      res.json(me);
-    } catch(e){
-      console.error('ME fatal error:', e);
-      res.status(500).json({ error:'server error' });
+
+      // 없으면 최소 정보로 생성(초기값 0)
+      const user = await User.findOneAndUpdate(
+        { kakaoId },
+        { $setOnInsert: { kakaoId, nickname, updatedAt: new Date() }, $set: { nickname, updatedAt: new Date() } },
+        { upsert: true, new: true }
+      ).lean();
+
+      const view = projectAssets(user, nickname);
+      return res.json(view);
+    } catch (e) {
+      console.error('[ME] fatal error:', e);
+      return res.status(500).json({ error:'server error' });
     }
   };
   app.post(p('/me'),        meHandler);
@@ -251,12 +235,12 @@ function registerRoutes(prefix){
   app.get(p('/chat/joiners'),  (req,res)=> res.json({ joiners:[...online] }));
 }
 
-// 세 프리픽스 모두 등록 (프론트 자동탐색 대응)
+// 프리픽스 3종 등록(프론트 폴백 경로 대응)
 registerRoutes('/api/apply');
 registerRoutes('/api');
 registerRoutes('');
 
-/* ===================== 서버 기동 ===================== */
+/* ============ 서버 기동 ============ */
 app.listen(PORT, ()=>{
   console.log('🚀 OrcaX API on :', PORT);
   console.log('CORS allowed origins:', ALLOWED_ORIGINS);
