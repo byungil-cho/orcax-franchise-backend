@@ -50,7 +50,7 @@ const FranchiseSchema = new mongoose.Schema({
 }, { collection: 'applies' });
 const Franchise = mongoose.models.Franchise || mongoose.model('Franchise', FranchiseSchema);
 
-// 가맹 신청(레거시: applications) — 조회용만
+// 가맹 신청(레거시: applications) — 조회/삭제용
 const LegacyApplicationSchema = new mongoose.Schema({
   kakaoId: String,
   nickname: String,
@@ -181,25 +181,31 @@ app.get('/api/apply', async (req,res)=>{
   }
 });
 
-// 가맹 신청 삭제 (신규 + 레거시 둘 다 지원)
-app.delete('/api/apply/delete/:id', async (req, res) => {
+// 단건 삭제: applies 에서 먼저, 없으면 applications 에서
+app.delete('/api/apply/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    if (!id) return res.status(400).json({ success: false, message: 'ID required' });
-
-    // applies에서 삭제 시도
-    let deleted = await Franchise.findByIdAndDelete(id);
-    if (deleted) return res.json({ success: true, source: 'applies' });
-
-    // 없으면 레거시 applications에서 삭제 시도
-    deleted = await LegacyApplication.findByIdAndDelete(id);
-    if (deleted) return res.json({ success: true, source: 'applications' });
-
-    // 둘 다 없으면
-    return res.status(404).json({ success: false, message: 'Not found' });
+    const r1 = await Franchise.deleteOne({ _id: id });
+    const r2 = r1.deletedCount ? { deletedCount: 0 } : await LegacyApplication.deleteOne({ _id: id });
+    return res.json({ ok: true, deletedFrom: { applies: r1.deletedCount, applications: r2.deletedCount } });
   } catch (e) {
     console.error('[APPLY] delete error:', e);
-    res.status(500).json({ success: false, message: 'DB 삭제 오류', detail: String(e?.message || e) });
+    return res.status(500).json({ ok:false, error:String(e?.message||e) });
+  }
+});
+
+// 여러 개 삭제: body { ids: ["id1","id2", ...] }
+app.delete('/api/apply', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (!ids.length) return res.status(400).json({ ok:false, error:'ids required' });
+    const r1 = await Franchise.deleteMany({ _id: { $in: ids } });
+    const remain = ids; // 같은 id 스키마를 가정 (다르면 별도 매핑 필요)
+    const r2 = await LegacyApplication.deleteMany({ _id: { $in: remain } });
+    return res.json({ ok:true, deletedFrom: { applies:r1.deletedCount, applications:r2.deletedCount } });
+  } catch (e) {
+    console.error('[APPLY] bulk delete error:', e);
+    return res.status(500).json({ ok:false, error:String(e?.message||e) });
   }
 });
 
@@ -218,6 +224,7 @@ function registerRoutes(prefix){
       const { kakaoId, nickname } = req.body || {};
       if (!kakaoId || !nickname) return res.status(400).json({ error:'kakaoId, nickname required' });
 
+      // 검색 조건에서는 kakaoId만, 변경값은 $set — 닉네임 충돌 해결
       const user = await User.findOneAndUpdate(
         { kakaoId },
         { $set: { nickname, updatedAt: new Date() }, $setOnInsert: { kakaoId } },
@@ -232,10 +239,12 @@ function registerRoutes(prefix){
     }
   };
 
+  // POST
   app.post(p('/me'),      meHandler);
   app.post(p('/user/me'), meHandler);
   app.post(p('/profile'), meHandler);
 
+  // GET 폴백(테스트/프록시 이슈 대비)
   app.get(p('/me'),      (req,res)=>{ req.body={ kakaoId:req.query.kakaoId, nickname:req.query.nickname }; return meHandler(req,res); });
   app.get(p('/user/me'), (req,res)=>{ req.body={ kakaoId:req.query.kakaoId, nickname:req.query.nickname }; return meHandler(req,res); });
   app.get(p('/profile'), (req,res)=>{ req.body={ kakaoId:req.query.kakaoId, nickname:req.query.nickname }; return meHandler(req,res); });
@@ -316,10 +325,12 @@ function registerRoutes(prefix){
   });
 }
 
+// 프리픽스 3종 등록 (프론트가 어디로 치든 다 받기)
 registerRoutes('/api/apply');
 registerRoutes('/api');
 registerRoutes('');
 
+/* ================= Boot ================= */
 app.listen(PORT, ()=>{
   console.log('🚀 OrcaX API on :', PORT);
   console.log('CORS allowed origins:', ALLOWED_ORIGINS);
