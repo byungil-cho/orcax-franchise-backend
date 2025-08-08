@@ -1,5 +1,5 @@
-// server.js (최신 통합본)
-// 환경변수: MONGODB_URL, (optional) DB_NAME, CLIENT_ORIGIN, PORT
+// server.js (최신 통합본, 안전 집계 + 다중 경로 지원)
+// ENV: MONGODB_URL, (optional) DB_NAME, CLIENT_ORIGIN, PORT
 require('dotenv').config();
 
 const express  = require('express');
@@ -9,7 +9,7 @@ const mongoose = require('mongoose');
 const app  = express();
 const PORT = process.env.PORT || 3070;
 
-// ===== Mongo 연결 =====
+/* ===================== Mongo 연결 ===================== */
 const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGODB_URI;
 const DB_NAME     = process.env.DB_NAME || 'orcax';
 if (!MONGODB_URL) {
@@ -21,17 +21,18 @@ mongoose
   .then(() => console.log('✅ MongoDB connected:', DB_NAME))
   .catch(err => { console.error('❌ MongoDB connect error:', err.message); process.exit(1); });
 
-// ===== CORS =====
+/* ===================== CORS ===================== */
 const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN
   ? process.env.CLIENT_ORIGIN.split(',').map(s=>s.trim())
   : ['https://byungil-cho.github.io']
 );
-app.use(cors({ origin: (origin, cb)=>cb(null, !origin || ALLOWED_ORIGINS.includes(origin)), credentials:true }));
+app.use(cors({
+  origin: (origin, cb)=> cb(null, !origin || ALLOWED_ORIGINS.includes(origin)),
+  credentials: true
+}));
 app.use(express.json());
 
-// -----------------------------------------------------
-// (기존) 가맹 신청 API
-// -----------------------------------------------------
+/* ===================== (기존) 가맹 신청 API ===================== */
 const FranchiseSchema = new mongoose.Schema({
   kakaoId: String,
   nickname: String,
@@ -59,7 +60,7 @@ app.post('/api/apply', async (req,res)=>{
     const doc = await Franchise.create({ kakaoId, nickname, name, storeName, phone, corpnum, region, address, type, note, status:'신청' });
     res.json({ success:true, id: doc._id });
   } catch(e){
-    console.error(e);
+    console.error('[APPLY] save error:', e);
     res.status(500).json({ success:false, message:'DB 저장 오류' });
   }
 });
@@ -69,14 +70,12 @@ app.get('/api/apply', async (req,res)=>{
     const list = await Franchise.find().sort({ createdAt:-1 });
     res.json(list);
   } catch(e){
-    console.error(e);
+    console.error('[APPLY] list error:', e);
     res.status(500).json({ error:'DB 조회 실패' });
   }
 });
 
-// -----------------------------------------------------
-// (추가) 공용 스키마들: 채팅 / 유저 / 농장 관련
-// -----------------------------------------------------
+/* ===================== (추가) 공용 스키마들 ===================== */
 // 채팅
 const MessageSchema = new mongoose.Schema({
   kakaoId:  { type:String, index:true },
@@ -101,7 +100,7 @@ const UserSchema = new mongoose.Schema({
 }, { collection:'users' });
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// 농장 관련(필드명/컬렉션명은 실제에 맞게 수정 필요)
+// 농장 관련(이름/필드 실제 환경에 맞게 필요 시 수정)
 const Farm = mongoose.models.Farm || mongoose.model('Farm', new mongoose.Schema({
   kakaoId: String,
   waterUsed: Number,
@@ -124,68 +123,78 @@ const Harvest = mongoose.models.Harvest || mongoose.model('Harvest', new mongoos
 // Presence(간단, 메모리)
 const online = new Set();
 
-// -----------------------------------------------------
-// (추가) 실시간 계산 함수: /me 응답 생성
-// -----------------------------------------------------
-async function computeMe(kakaoId, nickname){
+/* ===================== (추가) 실시간 계산 함수 (/me) ===================== */
+async function computeMeSafe(kakaoId, nickname){
+  // 기본 사용자 upsert
   const base = await User.findOneAndUpdate(
     { kakaoId },
     { $setOnInsert: { kakaoId, nickname }, $set: { nickname, updatedAt: new Date() } },
     { upsert: true, new: true }
   ).lean();
 
-  const [farmAgg, invDoc, harvestAgg] = await Promise.all([
-    Farm.aggregate([
+  // 각 컬렉션 집계/조회 (부분 실패해도 전체는 성공하도록 방어)
+  let farm = { waterUsed:0, fertilizerUsed:0 };
+  let inv  = { seedPotato:0, seedBarley:0 };
+  let hv   = { token:0, potato:0, barley:0 };
+
+  try {
+    const agg = await Farm.aggregate([
       { $match: { kakaoId } },
       { $group: { _id:null, waterUsed:{ $sum:'$waterUsed' }, fertilizerUsed:{ $sum:'$fertilizerUsed' } } }
-    ]),
-    Inventory.findOne({ kakaoId }).lean(),
-    Harvest.aggregate([
+    ]);
+    farm = agg?.[0] || farm;
+  } catch (e) { console.error('[ME] farms agg error:', e?.message || e); }
+
+  try {
+    const doc = await Inventory.findOne({ kakaoId }).lean();
+    if (doc) inv = doc;
+  } catch (e) { console.error('[ME] inventory find error:', e?.message || e); }
+
+  try {
+    const agg = await Harvest.aggregate([
       { $match: { kakaoId } },
       { $group: { _id:null, token:{ $sum:'$token' }, potato:{ $sum:'$potato' }, barley:{ $sum:'$barley' } } }
-    ])
-  ]);
+    ]);
+    hv = agg?.[0] || hv;
+  } catch (e) { console.error('[ME] harvest agg error:', e?.message || e); }
 
-  const farm = farmAgg?.[0] || { waterUsed:0, fertilizerUsed:0 };
-  const inv  = invDoc || { seedPotato:0, seedBarley:0 };
-  const hv   = harvestAgg?.[0] || { token:0, potato:0, barley:0 };
+  // NaN 방지
+  const n = (v)=> Number.isFinite(+v) ? +v : 0;
 
   return {
     nickname:   base.nickname || nickname || '손님',
-    water:      Math.max((base.water ?? 0)      - (farm.waterUsed ?? 0), 0),
-    fertilizer: Math.max((base.fertilizer ?? 0) - (farm.fertilizerUsed ?? 0), 0),
-    token:      (base.token ?? 0) + (hv.token ?? 0),
-    potato:     (base.potato ?? 0) + (hv.potato ?? 0),
-    barley:     (base.barley ?? 0) + (hv.barley ?? 0),
-    seedPotato: inv.seedPotato ?? 0,
-    seedBarley: inv.seedBarley ?? 0
+    water:      Math.max(n(base.water)      - n(farm.waterUsed), 0),
+    fertilizer: Math.max(n(base.fertilizer) - n(farm.fertilizerUsed), 0),
+    token:      n(base.token)  + n(hv.token),
+    potato:     n(base.potato) + n(hv.potato),
+    barley:     n(base.barley) + n(hv.barley),
+    seedPotato: n(inv.seedPotato),
+    seedBarley: n(inv.seedBarley)
   };
 }
 
-// -----------------------------------------------------
-// (추가) 공통 라우트 등록: /api/apply, /api, /
-// -----------------------------------------------------
+/* ===================== (추가) 공통 라우트 등록 ===================== */
 function registerRoutes(prefix){
   const p = (path)=> `${prefix}${path.startsWith('/') ? path : `/${path}`}`;
 
   // 헬스
   app.get(p('/status'), (req,res)=> res.json({ status:'OK' }));
 
-  // 자산: /me, /user/me, /profile 모두 지원
+  // 자산: /me, /user/me, /profile 모두 같은 핸들러
   const meHandler = async (req,res)=>{
     try{
       const { kakaoId, nickname } = req.body || {};
       if (!kakaoId || !nickname) return res.status(400).json({ error:'kakaoId, nickname required' });
-      const me = await computeMe(kakaoId, nickname);
+      const me = await computeMeSafe(kakaoId, nickname);
       res.json(me);
     } catch(e){
-      console.error('ME error:', e);
+      console.error('ME fatal error:', e);
       res.status(500).json({ error:'server error' });
     }
   };
-  app.post(p('/me'), meHandler);
-  app.post(p('/user/me'), meHandler);
-  app.post(p('/profile'), meHandler);
+  app.post(p('/me'),        meHandler);
+  app.post(p('/user/me'),   meHandler);
+  app.post(p('/profile'),   meHandler);
 
   // 채팅
   app.get(p('/chat'), async (req,res)=>{
@@ -242,12 +251,12 @@ function registerRoutes(prefix){
   app.get(p('/chat/joiners'),  (req,res)=> res.json({ joiners:[...online] }));
 }
 
-// 세 프리픽스 모두 등록
+// 세 프리픽스 모두 등록 (프론트 자동탐색 대응)
 registerRoutes('/api/apply');
 registerRoutes('/api');
 registerRoutes('');
 
-// ===== 서버 기동 =====
+/* ===================== 서버 기동 ===================== */
 app.listen(PORT, ()=>{
   console.log('🚀 OrcaX API on :', PORT);
   console.log('CORS allowed origins:', ALLOWED_ORIGINS);
